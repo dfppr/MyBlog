@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyBlog.com</title>
+    <style>
+        :root {
+            --main-pink: #ffc0cb;
+            --darker-pink: #ff69b4;
+            --soft-white: #fff0f5;
+            --text-color: #4a4a4a;
+            --border-radius: 20px;
+            --shadow: 0 4px 12px rgba(255, 105, 180, 0.2);
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--soft-white); color: var(--text-color); margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 2rem auto; padding: 2rem; background: white; border-radius: var(--border-radius); box-shadow: var(--shadow); }
+        h1, h2 { color: var(--darker-pink); text-align: center; }
+        .auth-form, #post-form { display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px; }
+        input, textarea { width: 100%; padding: 12px; border: 1px solid var(--main-pink); border-radius: var(--border-radius); box-sizing: border-box; font-size: 16px; background-color: #fffafa; }
+        button { background-color: var(--main-pink); color: white; border: none; padding: 12px 20px; border-radius: var(--border-radius); cursor: pointer; font-size: 16px; transition: all 0.3s ease; }
+        button:hover { background-color: var(--darker-pink); transform: scale(1.05); }
+        .delete-btn { background-color: #ff6b6b; font-size: 14px; padding: 8px 12px; }
+        .delete-btn:hover { background-color: #ff5252; }
+        .hidden { display: none; }
+        .post { border: 1px solid var(--main-pink); padding: 1.5rem; margin-top: 1.5rem; border-radius: var(--border-radius); background-color: #fffafa; box-shadow: var(--shadow); }
+        .post-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--main-pink); padding-bottom: 10px; margin-bottom: 10px; }
+        .post-author { font-weight: bold; color: var(--darker-pink); }
+        .message { text-align: center; padding: 10px; margin: 10px 0; border-radius: var(--border-radius); background-color: #ffe4e1; color: #d50000; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>MyBlog.com</h1>
+
+        <div id="auth-block">
+            <div id="auth-message" class="message" style="display: none;"></div>
+            <div class="auth-form">
+                <h2>Вход</h2>
+                <input type="email" id="login-email" placeholder="Email">
+                <input type="password" id="login-password" placeholder="Пароль">
+                <button onclick="login()">Войти</button>
+            </div>
+            <hr>
+            <div class="auth-form">
+                <h2>Регистрация</h2>
+                <input type="text" id="register-username" placeholder="Имя пользователя">
+                <input type="email" id="register-email" placeholder="Email">
+                <input type="password" id="register-password" placeholder="Пароль">
+                <button onclick="register()">Зарегистрироваться</button>
+            </div>
+        </div>
+
+        <div id="blog-block" class="hidden">
+            <div style="text-align: right; margin-bottom: 20px;">
+                <span id="user-info"></span>
+                <button onclick="logout()" style="margin-left: 10px;">Выйти</button>
+            </div>
+
+            <h2>Написать пост</h2>
+            <form id="post-form" onsubmit="createPost(event)">
+                <input type="text" id="post-title" placeholder="Заголовок" required>
+                <textarea id="post-content" placeholder="Ваш пост..." rows="5" required></textarea>
+                <button type="submit">Опубликовать</button>
+            </form>
+            <hr>
+            <h2>Все посты</h2>
+            <div id="posts-list"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+        let currentUserId = null;
+        let currentRole = null;
+
+        function showMessage(message) {
+            const el = document.getElementById('auth-message');
+            el.textContent = message;
+            el.style.display = 'block';
+            setTimeout(() => el.style.display = 'none', 5000);
+        }
+
+        function showBlog() {
+            document.getElementById('auth-block').classList.add('hidden');
+            document.getElementById('blog-block').classList.remove('hidden');
+            const username = localStorage.getItem('username') || 'Пользователь';
+            document.getElementById('user-info').textContent = `Вы вошли как: ${username}`;
+            loadPosts();
+        }
+
+        async function register() {
+            const username = document.getElementById('register-username').value;
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+
+            const res = await fetch(`${API_URL}/register`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username, email, password}),
+                credentials: 'include'
+            });
+            const data = await res.json();
+            res.ok ? showMessage('Регистрация успешна! Войдите.') : showMessage(`Ошибка: ${data.message}`);
+        }
+
+        async function login() {
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+
+            const res = await fetch(`${API_URL}/login`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({email, password}),
+                credentials: 'include'
+            });
+            const data = await res.json();
+            if (res.ok) {
+                localStorage.setItem('username', data.user.username);
+                localStorage.setItem('role', data.user.role);
+                localStorage.setItem('userId', data.user.id);
+                currentUserId = data.user.id;
+                currentRole = data.user.role;
+                showBlog();
+            } else {
+                showMessage(`Ошибка: ${data.message}`);
+            }
+        }
+
+        async function logout() {
+            await fetch(`${API_URL}/logout`, {method: 'POST', credentials: 'include'});
+            localStorage.clear();
+            currentUserId = null;
+            currentRole = null;
+            document.getElementById('blog-block').classList.add('hidden');
+            document.getElementById('auth-block').classList.remove('hidden');
+        }
+
+        async function loadPosts() {
+            const res = await fetch(`${API_URL}/posts`, {credentials: 'include'});
+            const posts = await res.json();
+            const list = document.getElementById('posts-list');
+            list.innerHTML = '';
+
+            posts.forEach(post => {
+                const isOwner = currentUserId && post.author_id === currentUserId;
+                const isAdmin = currentRole === 'admin';
+
+                const el = document.createElement('div');
+                el.className = 'post';
+                el.dataset.postId = post.id;
+
+                el.innerHTML = `
+                    <div class="post-header">
+                        <h3>${post.title}</h3>
+                        ${(isOwner || isAdmin) ? `<button class="delete-btn" onclick="deletePost(${post.id})">Удалить</button>` : ''}
+                    </div>
+                    <p class="post-author">Автор: ${post.author}</p>
+                    <p>${post.content.replace(/\n/g, '<br>')}</p>
+                    <div class="votes" style="margin-top: 15px; display: flex; align-items: center; gap: 20px; font-size: 20px;">
+                        <!-- Лайк -->
+                        <button onclick="like(${post.id})" style="background:none; border:none; cursor:pointer; font-size:32px;">
+                            ${post.user_liked ? '❤️' : '🤍'}
+                        </button>
+                        <span style="color: #ff69b4; font-weight: bold;">${post.likes}</span>
+
+                        <!-- Дизлайк — всегда 👎, цвет меняется -->
+                        <button onclick="dislike(${post.id})" style="background:none; border:none; cursor:pointer; font-size:32px; color: ${post.user_disliked ? '#ff5252' : '#cccccc'};">
+                            👎
+                        </button>
+                        <span style="color: #999; font-weight: bold;">${post.dislikes}</span>
+                    </div>
+                `;
+                list.appendChild(el);
+            });
+        }
+
+        async function createPost(e) {
+            e.preventDefault();
+            const title = document.getElementById('post-title').value;
+            const content = document.getElementById('post-content').value;
+
+            const res = await fetch(`${API_URL}/posts`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({title, content}),
+                credentials: 'include'
+            });
+
+            if (res.ok) {
+                document.getElementById('post-form').reset();
+                loadPosts();
+            } else {
+                const data = await res.json();
+                alert(`Ошибка: ${data.message}`);
+            }
+        }
+
+        async function deletePost(postId) {
+            if (!confirm('Удалить пост?')) return;
+            const res = await fetch(`${API_URL}/posts/${postId}`, {method: 'DELETE', credentials: 'include'});
+            res.ok ? loadPosts() : alert('Ошибка удаления');
+        }
+
+        async function like(postId) {
+            const res = await fetch(`${API_URL}/posts/${postId}/like`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                credentials: 'include'
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                updateVotes(postId, data);
+            }
+        }
+
+        async function dislike(postId) {
+            const res = await fetch(`${API_URL}/posts/${postId}/dislike`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                credentials: 'include'
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                updateVotes(postId, data);
+            }
+        }
+
+        function updateVotes(postId, data) {
+            const votesEl = document.querySelector(`.post[data-post-id="${postId}"] .votes`);
+            votesEl.innerHTML = `
+                <!-- Лайк -->
+                <button onclick="like(${postId})" style="background:none; border:none; cursor:pointer; font-size:32px;">
+                    ${data.user_liked ? '❤️' : '🤍'}
+                </button>
+                <span style="color: #ff69b4; font-weight: bold;">${data.likes}</span>
+
+                <!-- Дизлайк — всегда 👎, меняется только цвет -->
+                <button onclick="dislike(${postId})" style="background:none; border:none; cursor:pointer; font-size:32px; color: ${data.user_disliked ? '#ff5252' : '#cccccc'};">
+                    👎
+                </button>
+                <span style="color: #999; font-weight: bold;">${data.dislikes}</span>
+            `;
+        }
+
+        window.onload = () => {
+            if (localStorage.getItem('username')) {
+                currentUserId = parseInt(localStorage.getItem('userId'));
+                currentRole = localStorage.getItem('role');
+                showBlog();
+            }
+        };
+    </script>
+</body>
+</html>
